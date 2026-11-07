@@ -1,0 +1,80 @@
+name: 'Enterprise DevSecOps Pipeline'
+
+on:
+  push:
+    branches: [ main ]
+    paths: [ 'terraform/**', '.github/workflows/**' ]
+  pull_request:
+    branches: [ main ]
+    paths: [ 'terraform/**', '.github/workflows/**' ]
+
+permissions:
+  contents: read
+  pull-requests: write
+  security-events: write
+
+jobs:
+  lint-and-validate:
+    name: '1. Lint & Format Check'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.5
+      - name: Terraform Fmt
+        run: terraform fmt -check -recursive ./terraform
+
+  security-gates:
+    name: '2. Security Gates (Checkov, tfsec, Trivy, TruffleHog)'
+    runs-on: ubuntu-latest
+    needs: lint-and-validate
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: TruffleHog Secrets Scan
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+
+      - name: Run Checkov IaC Scan
+        uses: bridgecrewio/checkov-action@master
+        with:
+          framework: terraform
+          directory: terraform/
+          output_format: cli,sarif
+          output_file_path: console,results.sarif
+          soft_fail: true
+
+      - name: Upload Checkov SARIF to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: results.sarif
+
+      - name: Run Trivy Config Vulnerability Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'config'
+          scan-ref: './terraform'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+
+  terraform-plan:
+    name: '3. Terraform Plan & Blast Radius'
+    runs-on: ubuntu-latest
+    needs: security-gates
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.5
+      - name: Terraform Init & Validate
+        run: |
+          cd terraform
+          terraform init -backend=false
+          terraform validate

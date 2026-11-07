@@ -1,0 +1,13 @@
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+*.plan
+*.log
+bin/
+test/terratest.log
+junit*.xml
+checkov_report.json
+trivy_report.json

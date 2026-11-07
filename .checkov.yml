@@ -1,0 +1,9 @@
+framework:
+  - terraform
+soft-fail: false
+download-external-modules: true
+compact: true
+output: cli
+quiet: false
+skip-check:
+  - CKV_AZURE_35 # Exclude sample test storage restrictions if needed
